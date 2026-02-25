@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { executeSearch } from "@/lib/valyu";
 import { searchRequestSchema } from "@/lib/schemas";
 
+/** Extract a Bearer token from the Authorization header */
+function getUserToken(request: NextRequest): string | undefined {
+  const auth = request.headers.get("authorization");
+  if (auth?.startsWith("Bearer ")) {
+    return auth.slice(7);
+  }
+  return undefined;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -14,7 +23,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { results, query } = await executeSearch(parsed.data);
+    const userToken = getUserToken(request);
+    const { results, query } = await executeSearch(parsed.data, userToken);
 
     return NextResponse.json({
       success: true,

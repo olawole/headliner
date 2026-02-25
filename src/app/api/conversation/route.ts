@@ -16,6 +16,15 @@ import {
   type PrefetchedActivity,
 } from "@/lib/valyu";
 
+/** Extract a Bearer token from the Authorization header */
+function getUserToken(request: NextRequest): string | undefined {
+  const auth = request.headers.get("authorization");
+  if (auth?.startsWith("Bearer ")) {
+    return auth.slice(7);
+  }
+  return undefined;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -30,6 +39,7 @@ export async function POST(request: NextRequest) {
 
     const { topic, paper_url, watchlist, difficulty } = parsed.data;
     const config = getPersonaConfig(parsed.data.persona_type);
+    const userToken = getUserToken(request);
 
     // Build conversational context based on the mode
     let conversationalContext: string | undefined;
@@ -38,20 +48,20 @@ export async function POST(request: NextRequest) {
 
     if (paper_url) {
       // Paper walk-through mode
-      const prefetch = await fetchPaperContent(paper_url);
+      const prefetch = await fetchPaperContent(paper_url, userToken);
       conversationalContext = prefetch.context;
       prefetchedActivities = prefetch.activities;
       briefingSubject = "this research paper";
     } else if (watchlist && watchlist.length > 0) {
       // Watchlist / portfolio briefing mode
-      const prefetch = await fetchWatchlistContext(watchlist);
+      const prefetch = await fetchWatchlistContext(watchlist, userToken);
       conversationalContext = prefetch.context;
       prefetchedActivities = prefetch.activities;
       briefingSubject = `your portfolio: ${watchlist.join(", ")}`;
     } else if (topic) {
       // Standard topic briefing mode
       const searchType = config?.prefetchSearchType ?? "all";
-      const prefetch = await fetchContext(topic, searchType);
+      const prefetch = await fetchContext(topic, searchType, userToken);
       conversationalContext = prefetch.context;
       prefetchedActivities = prefetch.activities;
       briefingSubject = topic;

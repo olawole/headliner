@@ -11,6 +11,9 @@ import {
   type SetupMode,
 } from "@/lib/personas";
 import { searchTickers, type TickerEntry } from "@/lib/tickers";
+import { useAuthStore } from "@/app/stores/auth-store";
+import { isValyuMode } from "@/lib/app-mode";
+import { UserMenuInline } from "@/components/auth/user-menu";
 
 /* ── Accent color system ──────────────────────────────────────────── */
 const A = {
@@ -197,6 +200,8 @@ function SetupContent() {
   const personaType = (searchParams.get("persona") ?? "financial-analyst") as PersonaType;
   const persona = getPersonaConfig(personaType);
 
+  const FORM_STORAGE_KEY = `headliner_setup_form_${personaType}`;
+
   const [activeMode, setActiveMode] = useState<SetupMode>("topic");
   const [topic, setTopic] = useState("");
   const [paperUrl, setPaperUrl] = useState("");
@@ -208,6 +213,23 @@ function SetupContent() {
   const [difficulty, setDifficulty] = useState("general");
   const tickerInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Restore form state saved before auth redirect
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(FORM_STORAGE_KEY);
+      if (!saved) return;
+      const data = JSON.parse(saved);
+      if (data.activeMode) setActiveMode(data.activeMode);
+      if (data.topic) setTopic(data.topic);
+      if (data.paperUrl) setPaperUrl(data.paperUrl);
+      if (data.tickers?.length) setTickers(data.tickers);
+      if (data.difficulty) setDifficulty(data.difficulty);
+      localStorage.removeItem(FORM_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }, [FORM_STORAGE_KEY]);
 
   useEffect(() => {
     if (tickerInput.trim().length === 0) {
@@ -242,6 +264,9 @@ function SetupContent() {
     router.push("/");
     return null;
   }
+
+  const { isAuthenticated, openSignInModal } = useAuthStore();
+  const isValyu = isValyuMode();
 
   const c = A[persona.accentColor as AccentKey] ?? A.emerald;
   const modes = persona.setupModes;
@@ -298,6 +323,17 @@ function SetupContent() {
   };
 
   const handleStart = () => {
+    // In valyu mode, require authentication before starting
+    if (isValyu && !isAuthenticated) {
+      // Save form state so it survives the auth redirect
+      localStorage.setItem(
+        FORM_STORAGE_KEY,
+        JSON.stringify({ activeMode, topic, paperUrl, tickers, difficulty })
+      );
+      openSignInModal();
+      return;
+    }
+
     const params = new URLSearchParams({ persona: personaType });
     if (activeMode === "topic" && topic.trim()) {
       params.set("topic", topic.trim());
@@ -309,6 +345,8 @@ function SetupContent() {
     if (persona.hasDifficulty && difficulty !== "general") {
       params.set("difficulty", difficulty);
     }
+    // Clean up any stale saved form data
+    localStorage.removeItem(FORM_STORAGE_KEY);
     router.push(`/conversation?${params.toString()}`);
   };
 
@@ -344,7 +382,7 @@ function SetupContent() {
         animate="visible"
       >
         {/* ── Top bar ─────────────────────────────────────────── */}
-        <motion.div variants={fadeUp} className="py-6 sm:py-8">
+        <motion.div variants={fadeUp} className="flex items-center justify-between py-6 sm:py-8">
           <button
             onClick={() => router.push("/")}
             className="group flex items-center gap-2 text-xs font-mono tracking-wider uppercase text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -354,6 +392,7 @@ function SetupContent() {
             </span>
             Back
           </button>
+          <UserMenuInline />
         </motion.div>
 
         {/* ── Split layout ────────────────────────────────────── */}

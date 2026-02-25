@@ -1,7 +1,17 @@
 import { Valyu } from "valyu-js";
 import type { SearchRequest, SearchResult } from "./schemas";
+import { isValyuMode } from "./app-mode";
 
-function getClient(): Valyu {
+/**
+ * Create a Valyu client.
+ * In "valyu" mode, the user's OAuth access token is used so that
+ * the user's own credits are consumed. Falls back to the server-side
+ * VALYU_API_KEY for self-hosted mode or when no user token is provided.
+ */
+function getClient(userAccessToken?: string): Valyu {
+  if (isValyuMode() && userAccessToken) {
+    return new Valyu(userAccessToken);
+  }
   return new Valyu(process.env.VALYU_API_KEY);
 }
 
@@ -50,9 +60,10 @@ const SEARCH_TYPE_MAP: Record<string, SearchType> = {
 };
 
 export async function executeSearch(
-  request: SearchRequest
+  request: SearchRequest,
+  userAccessToken?: string
 ): Promise<{ results: SearchResult[]; query: string }> {
-  const valyu = getClient();
+  const valyu = getClient(userAccessToken);
   const searchType = SEARCH_TYPE_MAP[request.tool_name] ?? "all";
 
   const response = await valyu.search(request.query, {
@@ -80,9 +91,10 @@ export async function executeSearch(
  */
 export async function fetchContext(
   topic: string,
-  searchType: SearchType
+  searchType: SearchType,
+  userAccessToken?: string
 ): Promise<PrefetchResult> {
-  const valyu = getClient();
+  const valyu = getClient(userAccessToken);
   const toolName = searchType === "web" ? "search_web" : searchType === "news" ? "search_news" : "search_web";
 
   const response = await valyu.search(topic, {
@@ -124,8 +136,8 @@ export async function fetchContext(
  * Fetch and extract content from a paper URL (arXiv, PubMed, etc.).
  * Uses Valyu contents extraction for clean markdown output.
  */
-export async function fetchPaperContent(url: string): Promise<PrefetchResult> {
-  const valyu = getClient();
+export async function fetchPaperContent(url: string, userAccessToken?: string): Promise<PrefetchResult> {
+  const valyu = getClient(userAccessToken);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await (valyu as any).contents([url]);
@@ -185,9 +197,10 @@ export async function fetchPaperContent(url: string): Promise<PrefetchResult> {
  * Runs parallel searches and combines into a portfolio briefing.
  */
 export async function fetchWatchlistContext(
-  tickers: string[]
+  tickers: string[],
+  userAccessToken?: string
 ): Promise<PrefetchResult> {
-  const valyu = getClient();
+  const valyu = getClient(userAccessToken);
   const allActivities: PrefetchedActivity[] = [];
 
   const results = await Promise.all(

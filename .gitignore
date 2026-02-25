@@ -40,3 +40,5 @@ CLAUDE.md
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+headliner-app-mindmap.excalidraw

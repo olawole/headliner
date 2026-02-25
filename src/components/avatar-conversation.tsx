@@ -24,6 +24,8 @@ import { ExportSummary } from "@/components/export-summary";
 import { LiveChyron } from "@/components/live-chyron";
 import { DataCards } from "@/components/data-cards";
 import { getPersonaConfig, type PersonaType } from "@/lib/personas";
+import { UserMenuInline } from "@/components/auth/user-menu";
+import { useAuthStore } from "@/app/stores/auth-store";
 
 /* ── Accent maps ──────────────────────────────────────────────────── */
 const ACCENT_SPINNER: Record<string, string> = {
@@ -73,6 +75,7 @@ export function AvatarConversation({
 }: AvatarConversationProps) {
   const router = useRouter();
   const persona = getPersonaConfig(personaType);
+  const getAccessToken = useAuthStore((s) => s.getAccessToken);
   const [conversationUrl, setConversationUrl] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -109,9 +112,13 @@ export function AvatarConversation({
     setIsLoading(true);
     setError(null);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const token = getAccessToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const res = await fetch("/api/conversation", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ persona_type: personaType, topic, paper_url: paperUrl, watchlist, difficulty }),
       });
       if (!res.ok) {
@@ -141,7 +148,7 @@ export function AvatarConversation({
     } finally {
       setIsLoading(false);
     }
-  }, [personaType, topic, paperUrl, watchlist, difficulty]);
+  }, [personaType, topic, paperUrl, watchlist, difficulty, getAccessToken]);
 
   useEffect(() => {
     if (didInitRef.current) return;
@@ -162,9 +169,13 @@ export function AvatarConversation({
       setSearchActivities((prev) => [{ tool_name: toolName, query, status: "searching", timestamp: activityTimestamp }, ...prev]);
 
       try {
+        const searchHeaders: Record<string, string> = { "Content-Type": "application/json" };
+        const searchToken = getAccessToken();
+        if (searchToken) searchHeaders["Authorization"] = `Bearer ${searchToken}`;
+
         const res = await fetch("/api/search", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: searchHeaders,
           body: JSON.stringify({ tool_name: toolName, query }),
         });
         const data = await res.json();
@@ -185,7 +196,7 @@ export function AvatarConversation({
         );
       }
     },
-    [sendMessage]
+    [sendMessage, getAccessToken]
   );
 
   useObservableEvent(
@@ -405,6 +416,7 @@ export function AvatarConversation({
             <div className="px-4 py-3 border-b border-[--border-subtle] flex items-center gap-2.5">
               <span className="text-base">{persona.icon}</span>
               <span className="text-sm font-semibold text-white flex-1 truncate">{persona.name}</span>
+              <UserMenuInline />
               <ExportSummary transcript={transcript} searchActivities={searchActivities} personaName={persona.name} topic={topic} accentColor={accent} />
             </div>
           )}

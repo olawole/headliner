@@ -442,6 +442,17 @@ body::before {
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+/* Sign-in modal — opaque dark surface so it never bleeds through */
+.sign-in-modal {
+  background: rgba(12, 12, 16, 0.97);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.7),
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    BACKGROUNDS
    ═══════════════════════════════════════════════════════════════════ */
