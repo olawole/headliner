@@ -1,16 +1,50 @@
-# Avatar
+<p align="center">
+  <img src="public/headliner-mark.svg" width="60" alt="Headliner logo" />
+</p>
 
-An AI-powered video briefing app that pairs a real-time talking avatar with live search across financial markets, breaking news, and academic research — delivering personalized, face-to-face briefings on any topic you throw at it.
+<h1 align="center">Headliner</h1>
 
-Built with [Tavus CVI](https://docs.tavus.io) for conversational video, [Valyu](https://valyu.ai) for real-time search, and [Next.js](https://nextjs.org).
+<p align="center">
+  Talk face-to-face with AI experts who analyze your portfolio, broadcast your news, and break down your research, all powered by real-time search from <a href="https://valyu.ai">Valyu</a>.
+</p>
+
+<p align="center">
+  Built with <a href="https://docs.tavus.io">Tavus CVI</a> for conversational video, <a href="https://valyu.ai">Valyu</a> for real-time search, and <a href="https://nextjs.org">Next.js</a>.
+</p>
+
+---
+
+## Home
+
+![Home page — choose your AI expert](public/screenshots/home.png)
+
+## Personas
+
+<table>
+  <tr>
+    <td width="33%"><strong>Financial Analyst</strong></td>
+    <td width="33%"><strong>News Anchor</strong></td>
+    <td width="33%"><strong>Research Explainer</strong></td>
+  </tr>
+  <tr>
+    <td><img src="public/screenshots/setup-financial.png" alt="Financial Analyst setup" /></td>
+    <td><img src="public/screenshots/setup-news.png" alt="News Anchor setup" /></td>
+    <td><img src="public/screenshots/setup-research.png" alt="Research Explainer setup" /></td>
+  </tr>
+  <tr>
+    <td>Real-time market data, earnings reports, stock analysis, SEC filings, and portfolio briefings with watchlist support</td>
+    <td>Live news briefings on any topic with source citations and multi-story coverage</td>
+    <td>Academic paper breakdowns from arXiv, PubMed, and bioRxiv with adjustable difficulty levels</td>
+  </tr>
+</table>
 
 ## Features
 
-- **Financial Analyst** — Real-time market data, earnings reports, stock analysis, SEC filings, and portfolio briefings with watchlist support
-- **News Anchor** — Live news briefings on any topic with source citations and multi-story coverage
-- **Research Explainer** — Academic paper breakdowns from arXiv, PubMed, and bioRxiv with adjustable difficulty levels (general to expert)
+- **3 AI Experts** — Financial Analyst, News Anchor, and Research Explainer, each with a distinct personality and toolset
+- **Face-to-Face Video** — Real-time conversational video powered by Tavus CVI and Daily.co WebRTC
+- **Live Search** — On-the-fly web, academic, financial, and news search via Valyu
 - **Live Data Cards** — Bloomberg-style data overlays that surface key metrics, tickers, and price changes during briefings
-- **Video Recording** — Record your briefings as `.webm` files directly from the browser (avatar-only or picture-in-picture mode)
+- **Video Recording** — Record briefings as `.webm` files directly from the browser (avatar-only or picture-in-picture)
 - **Paper Walk-through** — Paste an arXiv/paper URL and get a structured, conversational explanation
 - **Watchlist Briefings** — Enter stock tickers for a full portfolio rundown
 - **Export Summary** — Download conversation transcripts as text
@@ -105,13 +139,21 @@ src/
 │   ├── api/
 │   │   ├── conversation/   # Create/end video conversations
 │   │   ├── search/          # Proxy search requests to Valyu
+│   │   ├── oauth/           # OAuth token exchange & refresh
 │   │   └── persona/         # Persona management
+│   ├── auth/                # OAuth callback handler
+│   ├── stores/              # Zustand stores (auth, theme)
+│   ├── conversation/
+│   │   ├── page.tsx         # Video conversation page
+│   │   └── setup/           # Persona setup & topic input
 │   └── page.tsx             # Landing page
 ├── components/
+│   ├── auth/                # Sign-in modal, user menu
 │   ├── cvi/                 # Tavus CVI components & hooks
 │   │   ├── components/      # Video UI, record button, device select
 │   │   └── hooks/           # Recording, Daily.co integration
 │   ├── avatar-conversation.tsx  # Main orchestrator
+│   ├── headliner-logo.tsx   # Animated logo component
 │   ├── data-cards.tsx       # Live data overlay cards
 │   ├── live-chyron.tsx      # Lower-third ticker bar
 │   ├── search-results.tsx   # Sidebar search results
@@ -120,6 +162,8 @@ src/
 └── lib/
     ├── tavus.ts             # Tavus API client
     ├── valyu.ts             # Valyu search + prefetch
+    ├── oauth.ts             # OAuth 2.0 + PKCE helpers
+    ├── app-mode.ts          # "valyu" vs "self-hosted" mode
     ├── personas.ts          # Persona configs & system prompts
     └── schemas.ts           # Zod validation schemas
 ```
@@ -132,6 +176,11 @@ src/
 4. The avatar delivers a face-to-face briefing using the pre-loaded data
 5. During conversation, the avatar can trigger live searches — results appear as data cards and in the sidebar
 6. Users can record the session, export transcripts, or ask follow-up questions
+
+## App Modes
+
+- **Valyu mode** (`NEXT_PUBLIC_APP_MODE=valyu`) — Users sign in via Valyu OAuth. Their own Valyu credits are consumed for searches.
+- **Self-hosted mode** (default) — The server-side `VALYU_API_KEY` is used. No login required.
 
 ## License
 
