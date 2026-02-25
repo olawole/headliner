@@ -121,6 +121,31 @@ export async function createConversation(options: {
   return response.json();
 }
 
+/** Maximum number of concurrent Tavus streams allowed by the plan */
+export const MAX_CONCURRENT_STREAMS = 3;
+
+/**
+ * Get the count of currently active conversations.
+ * Uses GET /v2/conversations?status=active&limit=1 to minimize payload
+ * and reads total_count from the response.
+ */
+export async function getActiveConversationCount(): Promise<number> {
+  const response = await fetch(
+    `${TAVUS_BASE_URL}/conversations?status=active&limit=1`,
+    { method: "GET", headers: getHeaders() }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to list conversations: ${response.status} ${errorText}`
+    );
+  }
+
+  const data = await response.json();
+  return data.total_count ?? 0;
+}
+
 export async function endConversation(conversationId: string) {
   const response = await fetch(
     `${TAVUS_BASE_URL}/conversations/${conversationId}/end`,

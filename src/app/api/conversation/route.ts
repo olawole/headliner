@@ -157,6 +157,14 @@ Only use search tools if the user asks about a ticker or topic NOT already in yo
       );
     }
 
+    // Detect Tavus concurrent stream limit (429)
+    if (message.includes("429") || message.includes("concurrent") || message.includes("limit") || message.includes("active conversations")) {
+      return NextResponse.json(
+        { error: "slots_full", message: "All conversation slots are currently in use. Please try again in a moment." },
+        { status: 429 }
+      );
+    }
+
     // Detect Tavus auth errors (401/403)
     if (message.includes("401") || message.includes("403") || message.includes("Unauthorized")) {
       return NextResponse.json(

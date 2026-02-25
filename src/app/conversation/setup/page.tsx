@@ -3,7 +3,7 @@
 import { Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, List, Link2, X, ArrowRight, ArrowLeft, Zap } from "lucide-react";
+import { Search, List, Link2, X, ArrowRight, ArrowLeft, Zap, Clock, Users } from "lucide-react";
 import {
   getPersonaConfig,
   DIFFICULTY_LABELS,
@@ -211,8 +211,51 @@ function SetupContent() {
   const [highlightIdx, setHighlightIdx] = useState(-1);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [difficulty, setDifficulty] = useState("general");
+  const [slotsAvailable, setSlotsAvailable] = useState(true);
+  const [activeSlots, setActiveSlots] = useState(0);
+  const [maxSlots, setMaxSlots] = useState(3);
+  const [isQueued, setIsQueued] = useState(false);
+  const [queueReady, setQueueReady] = useState(false);
   const tickerInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const queuePollRef = useRef<NodeJS.Timeout | null>(null);
+
+  /* ── Poll slot availability every 10s ────────────────────────────── */
+  const checkAvailability = useCallback(async () => {
+    try {
+      const res = await fetch("/api/conversation/availability");
+      const data = await res.json();
+      setSlotsAvailable(data.available);
+      setActiveSlots(data.active);
+      setMaxSlots(data.max);
+      return data.available as boolean;
+    } catch {
+      // On error, assume available
+      setSlotsAvailable(true);
+      return true;
+    }
+  }, []);
+
+  useEffect(() => {
+    checkAvailability();
+    const interval = setInterval(checkAvailability, 10_000);
+    return () => clearInterval(interval);
+  }, [checkAvailability]);
+
+  /* ── Queue mode: poll faster and auto-navigate when slot opens ──── */
+  useEffect(() => {
+    if (!isQueued) return;
+    queuePollRef.current = setInterval(async () => {
+      const available = await checkAvailability();
+      if (available) {
+        setQueueReady(true);
+        if (queuePollRef.current) clearInterval(queuePollRef.current);
+      }
+    }, 8_000);
+    return () => {
+      if (queuePollRef.current) clearInterval(queuePollRef.current);
+    };
+  }, [isQueued, checkAvailability]);
 
   // Restore form state saved before auth redirect
   useEffect(() => {
@@ -322,18 +365,7 @@ function SetupContent() {
     }
   };
 
-  const handleStart = () => {
-    // In valyu mode, require authentication before starting
-    if (isValyu && !isAuthenticated) {
-      // Save form state so it survives the auth redirect
-      localStorage.setItem(
-        FORM_STORAGE_KEY,
-        JSON.stringify({ activeMode, topic, paperUrl, tickers, difficulty })
-      );
-      openSignInModal();
-      return;
-    }
-
+  const navigateToConversation = useCallback(() => {
     const params = new URLSearchParams({ persona: personaType });
     if (activeMode === "topic" && topic.trim()) {
       params.set("topic", topic.trim());
@@ -345,9 +377,36 @@ function SetupContent() {
     if (persona.hasDifficulty && difficulty !== "general") {
       params.set("difficulty", difficulty);
     }
-    // Clean up any stale saved form data
     localStorage.removeItem(FORM_STORAGE_KEY);
     router.push(`/conversation?${params.toString()}`);
+  }, [personaType, activeMode, topic, paperUrl, tickers, persona.hasDifficulty, difficulty, FORM_STORAGE_KEY, router]);
+
+  /* ── Auto-navigate when queue slot becomes available ──────────── */
+  useEffect(() => {
+    if (queueReady && isQueued) {
+      const timer = setTimeout(navigateToConversation, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [queueReady, isQueued, navigateToConversation]);
+
+  const handleStart = () => {
+    // In valyu mode, require authentication before starting
+    if (isValyu && !isAuthenticated) {
+      localStorage.setItem(
+        FORM_STORAGE_KEY,
+        JSON.stringify({ activeMode, topic, paperUrl, tickers, difficulty })
+      );
+      openSignInModal();
+      return;
+    }
+
+    // If slots are full, enter queue mode instead of navigating
+    if (!slotsAvailable) {
+      setIsQueued(true);
+      return;
+    }
+
+    navigateToConversation();
   };
 
   const canStart =
@@ -742,23 +801,121 @@ function SetupContent() {
                 )}
               </div>
 
-              {/* Start button */}
-              <motion.button
-                onClick={handleStart}
-                disabled={!canStart}
-                whileHover={canStart ? { scale: 1.01 } : undefined}
-                whileTap={canStart ? { scale: 0.98 } : undefined}
-                className={`group flex w-full items-center justify-center gap-3 rounded-xl ${c.btn} ${c.btnGlow} px-6 py-4 text-sm font-semibold text-white shadow-lg transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed`}
-              >
-                <Zap size={16} className="opacity-70" />
-                Start Conversation
-                <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5 group-disabled:translate-x-0" />
-              </motion.button>
+              {/* Start / Queue button */}
+              <AnimatePresence mode="wait">
+                {isQueued ? (
+                  queueReady ? (
+                    /* Slot opened — green flash → auto-navigate */
+                    <motion.div
+                      key="queue-ready"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex w-full flex-col items-center gap-3 rounded-xl bg-emerald-600 px-6 py-4"
+                    >
+                      <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                        <Zap size={16} />
+                        Slot available — starting now!
+                      </div>
+                      <div className="h-1 w-24 overflow-hidden rounded-full bg-emerald-400/30">
+                        <motion.div
+                          className="h-full bg-white rounded-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: "100%" }}
+                          transition={{ duration: 1, ease: "linear" }}
+                        />
+                      </div>
+                    </motion.div>
+                  ) : (
+                    /* In queue — waiting for a slot */
+                    <motion.div
+                      key="queue-waiting"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.3 }}
+                      className="space-y-3"
+                    >
+                      <div className="flex w-full items-center justify-center gap-3 rounded-xl bg-amber-600/20 border border-amber-500/20 px-6 py-4">
+                        <div className="relative flex h-5 w-5 items-center justify-center">
+                          <div
+                            className="absolute inset-0 rounded-full border-2 border-transparent border-t-amber-400"
+                            style={{ animation: "ring-rotate 1.5s linear infinite" }}
+                          />
+                        </div>
+                        <span className="text-sm font-medium text-amber-300">
+                          Waiting for an expert to become available
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between px-1">
+                        <p className="text-[11px] text-amber-400/60 font-mono">
+                          {activeSlots}/{maxSlots} experts live — checking every 8s
+                        </p>
+                        <button
+                          onClick={() => setIsQueued(false)}
+                          className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </motion.div>
+                  )
+                ) : (
+                  /* Normal start button */
+                  <motion.button
+                    key="start-btn"
+                    onClick={handleStart}
+                    disabled={!canStart}
+                    whileHover={canStart ? { scale: 1.01 } : undefined}
+                    whileTap={canStart ? { scale: 0.98 } : undefined}
+                    className={`group flex w-full items-center justify-center gap-3 rounded-xl ${
+                      !slotsAvailable
+                        ? "bg-amber-600/80 hover:bg-amber-500/80 shadow-amber-900/30 hover:shadow-[0_0_30px_rgba(245,158,11,0.2)]"
+                        : `${c.btn} ${c.btnGlow}`
+                    } px-6 py-4 text-sm font-semibold text-white shadow-lg transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed`}
+                  >
+                    {!slotsAvailable ? (
+                      <>
+                        <Clock size={16} className="opacity-70" />
+                        Join Queue
+                        <Users size={14} className="opacity-50" />
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={16} className="opacity-70" />
+                        Start Conversation
+                        <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5 group-disabled:translate-x-0" />
+                      </>
+                    )}
+                  </motion.button>
+                )}
+              </AnimatePresence>
 
-              {activeMode === "topic" && (
-                <p className="text-center text-[11px] text-zinc-600">
-                  You can also start without a topic for a free-form conversation
-                </p>
+              {/* Slot availability indicator */}
+              {!isQueued && (
+                <div className="flex items-center justify-center gap-2">
+                  {activeMode === "topic" && slotsAvailable && (
+                    <p className="text-[11px] text-zinc-600">
+                      You can also start without a topic for a free-form conversation
+                    </p>
+                  )}
+                  {!slotsAvailable && (
+                    <p className="text-center text-[11px] text-amber-400/60 flex items-center gap-1.5">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-50" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      </span>
+                      All {maxSlots} experts are live — you&apos;ll queue and auto-start when one opens
+                    </p>
+                  )}
+                  {slotsAvailable && maxSlots - activeSlots < maxSlots && (
+                    <p className="text-center text-[11px] text-zinc-600 flex items-center gap-1.5">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      </span>
+                      {maxSlots - activeSlots} of {maxSlots} {maxSlots - activeSlots === 1 ? "slot" : "slots"} open
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           </motion.div>

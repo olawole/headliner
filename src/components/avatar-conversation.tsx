@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   CreditCard,
   KeyRound,
+  Users,
 } from "lucide-react";
 import { Conversation } from "@/components/cvi/components/conversation";
 import { useObservableEvent } from "@/components/cvi/hooks/use-observable-event";
@@ -58,6 +59,24 @@ const BOOT_MESSAGES = [
   "Almost ready",
 ];
 
+const QUEUE_MESSAGES = [
+  "All experts are currently in live briefings",
+  "You're next in line",
+  "Checking for an open slot",
+  "Hang tight — almost there",
+];
+
+const ACCENT_AMBER: Record<string, string> = {
+  emerald: "border-t-amber-400",
+  red: "border-t-amber-400",
+  violet: "border-t-amber-400",
+};
+const ACCENT_AMBER_RING: Record<string, string> = {
+  emerald: "border-amber-400/30",
+  red: "border-amber-400/30",
+  violet: "border-amber-400/30",
+};
+
 interface AvatarConversationProps {
   personaType: PersonaType;
   topic?: string;
@@ -87,6 +106,8 @@ export function AvatarConversation({
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(384);
   const [bootIdx, setBootIdx] = useState(0);
+  const [queueIdx, setQueueIdx] = useState(0);
+  const queueRetryRef = useRef<NodeJS.Timeout | null>(null);
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
@@ -99,6 +120,8 @@ export function AvatarConversation({
   const sendMessage = useSendAppMessage();
   const accent = persona?.accentColor ?? "emerald";
 
+  const isInQueue = errorCode === "slots_full";
+
   /* ── Boot sequence animation ─────────────────────────────────────── */
   useEffect(() => {
     if (!isLoading && conversationUrl) return;
@@ -107,6 +130,16 @@ export function AvatarConversation({
     }, 2200);
     return () => clearInterval(interval);
   }, [isLoading, conversationUrl]);
+
+  /* ── Queue message cycling ─────────────────────────────────────── */
+  useEffect(() => {
+    if (!isInQueue) return;
+    const interval = setInterval(() => {
+      setQueueIdx((prev) => (prev + 1) % QUEUE_MESSAGES.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isInQueue]);
+
 
   const startConversation = useCallback(async () => {
     setIsLoading(true);
@@ -155,6 +188,29 @@ export function AvatarConversation({
     didInitRef.current = true;
     startConversation();
   }, [startConversation]);
+
+  /* ── Queue auto-retry: poll every 10s when slots are full ──────── */
+  useEffect(() => {
+    if (!isInQueue) return;
+    queueRetryRef.current = setInterval(async () => {
+      try {
+        const res = await fetch("/api/conversation/availability");
+        const data = await res.json();
+        if (data.available) {
+          // Slot opened — clear queue state and retry conversation
+          setError(null);
+          setErrorCode(null);
+          didInitRef.current = false;
+          startConversation();
+        }
+      } catch {
+        // Silently continue polling
+      }
+    }, 10_000);
+    return () => {
+      if (queueRetryRef.current) clearInterval(queueRetryRef.current);
+    };
+  }, [isInQueue, startConversation]);
 
   const handleToolCall = useCallback(
     async (properties: Record<string, unknown>) => {
@@ -283,6 +339,76 @@ export function AvatarConversation({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* ── Queue — all slots are full, auto-retrying ──────────────────── */
+  if (isInQueue) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="absolute inset-0 bg-neural-mesh opacity-40" />
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6 }}
+          className="relative text-center space-y-6 max-w-sm"
+        >
+          {/* Animated ring — amber to signal waiting, not error */}
+          <div className="relative mx-auto h-16 w-16">
+            <div className={`absolute inset-0 rounded-full border-2 border-[--border-subtle] ${ACCENT_AMBER_RING[accent]}`} />
+            <div
+              className={`absolute inset-0 rounded-full border-2 border-transparent ${ACCENT_AMBER[accent]}`}
+              style={{ animation: "ring-rotate 2s cubic-bezier(0.4, 0, 0.2, 1) infinite" }}
+            />
+            <div className="absolute inset-3 flex items-center justify-center">
+              <Users size={18} className="text-amber-400" />
+            </div>
+          </div>
+
+          {/* Queue messages */}
+          <div className="space-y-2 min-h-[64px]">
+            <p className="text-sm text-white font-medium">
+              High demand right now
+            </p>
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={queueIdx}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.3 }}
+                className="text-xs text-amber-400/70 font-mono tracking-wider"
+              >
+                {QUEUE_MESSAGES[queueIdx]}
+              </motion.p>
+            </AnimatePresence>
+            <p className="text-[11px] text-[--text-quaternary] pt-1">
+              Auto-retrying every 10 seconds
+            </p>
+          </div>
+
+          {/* Progress dots */}
+          <div className="flex items-center justify-center gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-1.5 w-1.5 rounded-full bg-amber-400"
+                style={{
+                  opacity: 0.3 + (queueIdx % 3 === i ? 0.7 : 0),
+                  transition: "opacity 0.3s ease",
+                }}
+              />
+            ))}
+          </div>
+
+          <button
+            onClick={() => router.push("/")}
+            className="rounded-lg border border-[--border-default] px-4 py-2 text-sm text-[--text-secondary] hover:bg-[--surface-2] transition-colors"
+          >
+            Back to Home
+          </button>
+        </motion.div>
+      </main>
+    );
+  }
 
   /* ── Error ───────────────────────────────────────────────────────── */
   if (error) {
