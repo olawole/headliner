@@ -64,6 +64,7 @@
 - Node.js 18+
 - A [Tavus API key](https://platform.tavus.io)
 - A [Valyu API key](https://platform.valyu.ai)
+<img src="https://files.catbox.moe/n7fq4h.jpg" height="60">
 
 ## Installation
 
